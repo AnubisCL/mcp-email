@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "mcp-read-email-163-binary": {
+      "command": "/Users/anubis/404net/mcp-read-email-py/dist/mcp_email_service_sdk",
+      "args": [],
+      "env": {
+        "MCP_EMAIL_PROTOCOL": "imap",
+        "MCP_EMAIL_SERVER": "imap.163.com",
+        "MCP_EMAIL_PORT": "993",
+        "MCP_SMTP_SERVER": "smtp.163.com",
+        "MCP_SMTP_PORT": "465",
+        "MCP_EMAIL_USERNAME": "anubiscl@163.com",
+        "MCP_EMAIL_PASSWORD": "xxx",
+        "MCP_SAVE_PATH": "/Users/anubis/404net/mcp-read-email-py/attachments"
+      }
+    }
+  }
+}
