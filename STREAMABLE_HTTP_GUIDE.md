@@ -17,7 +17,7 @@ export MCP_SMTP_PORT="465"
 export MCP_SAVE_PATH="/path/to/attachments"
 
 # 启动 HTTP 服务器
-python src/email_mcp/server.py --transport streamable-http --port 8000
+python src/email_mcp/server.py --transport streamable-http --port 8001
 ```
 
 **MCP 客户端配置：**
@@ -25,7 +25,7 @@ python src/email_mcp/server.py --transport streamable-http --port 8000
 {
   "mcpServers": {
     "email": {
-      "url": "http://localhost:8000/mcp",
+      "url": "http://localhost:8001/mcp",
       "transport": "streamable-http"
     }
   }
@@ -77,7 +77,7 @@ async def email_list_messages(params: ListMessagesInput, ctx: Context) -> str:
 {
   "mcpServers": {
     "email": {
-      "url": "http://localhost:8000/mcp",
+      "url": "http://localhost:8001/mcp",
       "transport": "streamable-http",
       "headers": {
         "X-Email-Auth": "base64(username:password)"
@@ -191,7 +191,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--port",
         type=int,
-        default=8000,
+        default=8001,
         help="HTTP port (for streamable-http)"
     )
     parser.add_argument(
@@ -217,12 +217,12 @@ if __name__ == "__main__":
 python src/email_mcp/server.py
 
 # HTTP 模式
-python src/email_mcp/server.py --transport streamable-http --port 8000 --host 0.0.0.0
+python src/email_mcp/server.py --transport streamable-http --port 8001 --host 0.0.0.0
 
 # 使用环境变量配置
 MCP_EMAIL_USERNAME="user@163.com" \
 MCP_EMAIL_PASSWORD="auth-code" \
-python src/email_mcp/server.py --transport streamable-http --port 8000
+python src/email_mcp/server.py --transport streamable-http --port 8001
 ```
 
 ---
@@ -255,10 +255,10 @@ python src/email_mcp/server.py --transport streamable-http --port 8000
 2. **使用 HTTPS 生产环境**
    ```bash
    # 开发环境
-   python src/email_mcp/server.py --port 8000
+   python src/email_mcp/server.py --port 8001
 
    # 生产环境（使用反向代理）
-   # Nginx/Caddy 配置 HTTPS → 转发到 localhost:8000
+   # Nginx/Caddy 配置 HTTPS → 转发到 localhost:8001
    ```
 
 3. **敏感数据加密存储**

@@ -301,7 +301,7 @@ Examples:
   python src/email_mcp/server.py
 
   # Run with HTTP transport
-  python src/email_mcp/server.py --transport streamable-http --port 8000
+  python src/email_mcp/server.py --transport streamable-http --port 8001
 
   # Run with environment variables
   MCP_EMAIL_USERNAME=user@163.com MCP_EMAIL_PASSWORD=auth-code \\
@@ -318,8 +318,8 @@ Examples:
     parser.add_argument(
         "--port",
         type=int,
-        default=8000,
-        help="HTTP port for streamable-http transport (default: 8000)"
+        default=8001,
+        help="HTTP port for streamable-http transport (default: 8001)"
     )
     parser.add_argument(
         "--host",

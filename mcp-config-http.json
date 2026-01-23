@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "email-http": {
-      "url": "http://localhost:8000/mcp",
+      "url": "http://localhost:8001/mcp",
       "transport": "streamable-http"
     },
     "email-stdio": {
