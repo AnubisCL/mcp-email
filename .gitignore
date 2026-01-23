@@ -1,8 +1,2 @@
-./.idea/
-./.idea/*
-/.idea/inspectionProfiles/Project_Default.xml
-/.idea/mcp-read-email-py.iml
-/.idea/misc.xml
-/.idea/inspectionProfiles/profiles_settings.xml
-/.idea/vcs.xml
-/.idea/workspace.xml
+.idea
+.vscode
