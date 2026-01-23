@@ -6,8 +6,8 @@ for various email providers (163.com, Gmail, Outlook, etc.).
 """
 
 __version__ = "1.0.0"
-__author__ = "Vibe Team"
-__email__ = "dev@vibe-team.com"
+__author__ = "chai lei"
+__email__ = "anubiscl@163.com"
 
 from email_mcp.server import mcp
 

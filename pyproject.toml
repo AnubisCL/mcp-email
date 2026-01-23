@@ -9,7 +9,7 @@ description = "Email MCP Server for Model Context Protocol"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Vibe Team", email = "dev@vibe-team.com"}
+    {name = "chai lei", email = "anubiscl@163.com"}
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -39,10 +39,10 @@ dev = [
 email-mcp = "email_mcp.server:main"
 
 [project.urls]
-Homepage = "https://github.com/your-org/email-mcp"
-Documentation = "https://github.com/your-org/email-mcp"
-Repository = "https://github.com/your-org/email-mcp"
-Issues = "https://github.com/your-org/email-mcp/issues"
+Homepage = "https://git.404.net.cn/vibe-team/email-mcp"
+Documentation = "https://git.404.net.cn/vibe-team/email-mcp"
+Repository = "https://git.404.net.cn/vibe-team/email-mcp"
+Issues = "https://git.404.net.cn/vibe-team/email-mcp/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
