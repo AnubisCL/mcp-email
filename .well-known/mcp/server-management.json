@@ -1,0 +1,14 @@
+{
+  "metadata": {
+    "mcpId": "mcp-server-email",
+    "name": "Email MCP Server",
+    "description": "Provides email functionality for various email providers including IMAP reading and SMTP sending",
+    "version": "1.0.0"
+  },
+  "contact": {
+    "author": "Vibe Team",
+    "email": "dev@vibe-team.com",
+    "documentation": "https://github.com/your-org/email-mcp"
+  },
+  "managementEndpoints": []
+}

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(mcp-builder)",
+      "Bash(chmod:*)",
+      "Bash(timeout:*)",
+      "Bash(ls:*)",
+      "Bash(tree:*)"
+    ]
+  }
+}

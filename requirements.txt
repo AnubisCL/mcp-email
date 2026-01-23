@@ -1,0 +1,8 @@
+# Email MCP Server Dependencies
+# Python 3.10+
+
+# MCP Framework
+fastmcp>=0.1.0
+
+# Data Validation
+pydantic>=2.0.0
