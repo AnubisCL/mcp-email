@@ -5,24 +5,30 @@ Email MCP Server - Streamable HTTP Mode
 A Model Context Protocol server that provides email functionality for
 various email providers including 163.com, Gmail, Outlook, etc.
 
-Environment variables (loaded from .env file):
-    MCP_EMAIL_USERNAME: Email account username (required)
-    MCP_EMAIL_PASSWORD: Email password or app-specific password (required)
-    MCP_EMAIL_SERVER: IMAP server (default: imap.163.com)
-    MCP_EMAIL_PORT: IMAP port (default: 993)
-    MCP_SMTP_SERVER: SMTP server (default: smtp.163.com)
-    MCP_SMTP_PORT: SMTP port (default: 465)
-    MCP_SAVE_PATH: Attachment save path (default: ~/email-attachments)
-    MCP_LOG_LEVEL: Log level - DEBUG, INFO, WARNING, ERROR (default: INFO)
+API Key authentication (REQUIRED):
+- Each email configuration has its own unique API key
+- Client MUST send X-API-Key header to identify which email config to use
+- API keys are generated when creating email configurations via the config API
+- Without a valid API key, the server will reject all requests
+
+Configuration API:
+- Manage email configurations at http://127.0.0.1:8002/config-ui/index.html
+- Each configuration automatically gets a unique API key upon creation
 """
 
 import os
 import sys
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from fastmcp import FastMCP
+from fastmcp.server.middleware import Middleware
 from pydantic import BaseModel
+from starlette.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
 
 from email_mcp.models import (
     EmailConfig,
@@ -33,70 +39,211 @@ from email_mcp.models import (
 from email_mcp.client import EmailClient
 from email_mcp.logging_config import get_logger, get_log_level_from_env
 
+# Context variable for storing current request's email config
+_current_config: ContextVar[Optional[EmailConfig]] = ContextVar("current_config", default=None)
 
-def load_env_file():
-    """Load .env file from project root if it exists."""
-    current_path = Path(__file__).resolve()
-    project_root = current_path.parent.parent.parent
-    env_file = project_root / ".env"
-
-    if env_file.exists():
-        try:
-            from dotenv import load_dotenv
-            load_dotenv(env_file)
-            print(f"✓ Loaded environment from: {env_file}")
-        except ImportError:
-            print("⚠️  python-dotenv not installed, run: pip install python-dotenv")
-        except Exception as e:
-            print(f"⚠️  Failed to load .env: {e}")
-
-
-# Load .env at import time
-load_env_file()
 
 # Initialize logger with log level from env
 logger = get_logger("server")
 
-# Initialize MCP server
-mcp = FastMCP("email_mcp")
+
+# API Key middleware to extract X-API-Key header and set email config context
+class APIKeyMiddleware(Middleware):
+    """Middleware to extract API key from request metadata and set email config context."""
+
+    async def on_request(self, context, call_next):
+        """Handle incoming requests - validate API key and set email config context."""
+        # Get API key from request metadata
+        api_key = None
+        if hasattr(context, 'request') and context.request:
+            api_key = context.request.headers.get('X-API-Key')
+
+        if not api_key:
+            logger.error("Request missing X-API-Key header")
+            # Return error response for MCP requests
+            if context.method in ["initialize", "tools/call", "tools/list", "resources/list", "resources/read"]:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": getattr(context, 'request_id', None),
+                    "error": {
+                        "code": -32600,
+                        "message": "Unauthorized: X-API-Key header is required"
+                    }
+                }
+            return await call_next(context)
+
+        logger.debug(f"Request with API key: {api_key[:8]}...")
+        config = _get_email_config_from_db(api_key)
+
+        if not config:
+            logger.warning(f"Invalid API key: {api_key[:8]}...")
+            if context.method in ["initialize", "tools/call", "tools/list", "resources/list", "resources/read"]:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": getattr(context, 'request_id', None),
+                    "error": {
+                        "code": -32600,
+                        "message": "Unauthorized: Invalid API key"
+                    }
+                }
+            return await call_next(context)
+
+        # Set email config context for this request
+        token = _current_config.set(config)
+        try:
+            response = await call_next(context)
+        finally:
+            _current_config.reset(token)
+        return response
 
 
-def _get_email_config() -> EmailConfig:
+# Create MCP middleware instance
+api_key_middleware = APIKeyMiddleware()
+
+# Initialize MCP server with middleware (MCP protocol layer)
+mcp = FastMCP("email_mcp", middleware=[api_key_middleware])
+logger.info("✓ API Key middleware configured (API key required for all requests)")
+
+
+# HTTP-level middleware for API key validation (runs before MCP layer)
+class HTTPAPIKeyMiddleware(BaseHTTPMiddleware):
+    """HTTP middleware to validate API key at HTTP layer."""
+
+    async def dispatch(self, request: StarletteRequest, call_next):
+        """Validate API key from X-API-Key header."""
+        # Only check MCP endpoint
+        if not request.url.path.startswith('/mcp'):
+            return await call_next(request)
+
+        api_key = request.headers.get('X-API-Key')
+
+        if not api_key:
+            logger.error("Request missing X-API-Key header")
+            return JSONResponse(
+                status_code=401,
+                content={"error": "Unauthorized", "detail": "X-API-Key header is required"}
+            )
+
+        logger.debug(f"Request with API key: {api_key[:8]}...")
+        config = _get_email_config_from_db(api_key)
+
+        if not config:
+            logger.warning(f"Invalid API key: {api_key[:8]}...")
+            return JSONResponse(
+                status_code=401,
+                content={"error": "Unauthorized", "detail": "Invalid API key"}
+            )
+
+        # Set email config context for this request
+        token = _current_config.set(config)
+        try:
+            response = await call_next(request)
+        finally:
+            _current_config.reset(token)
+        return response
+
+
+def _get_email_config_from_db(api_key: str) -> Optional[EmailConfig]:
     """
-    Load email configuration from environment variables.
+    Load email configuration from database using API key.
+
+    Each email config has its own API key - direct lookup.
+
+    Args:
+        api_key: API key from X-API-Key header
+
+    Returns:
+        EmailConfig object or None if not found
+    """
+    try:
+        from email_mcp.database import get_session_factory
+        from email_mcp.database import EmailConfig as DBEmailConfig
+
+        session_factory = get_session_factory()
+        db = session_factory()
+
+        try:
+            # Direct lookup: API key belongs to EmailConfig
+            db_config = db.query(DBEmailConfig).filter(
+                DBEmailConfig.api_key == api_key,
+                DBEmailConfig.is_active == True
+            ).first()
+
+            if not db_config:
+                logger.warning(f"No active email config found for API key: {api_key[:8]}...")
+                return None
+
+            # Convert to EmailConfig model
+            config = EmailConfig(
+                protocol="imap",
+                imap_server=db_config.imap_server,
+                imap_port=db_config.imap_port,
+                smtp_server=db_config.smtp_server,
+                smtp_port=db_config.smtp_port,
+                username=db_config.username,
+                password=db_config.password,
+                save_path=os.path.expanduser('~/email-attachments')
+            )
+
+            logger.info(f"✓ Email configured from DB for: {config.username}")
+            logger.debug(f"  IMAP: {config.imap_server}:{config.imap_port}")
+            logger.debug(f"  SMTP: {config.smtp_server}:{config.smtp_port}")
+
+            return config
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Error loading config from database: {type(e).__name__}: {e}")
+        return None
+
+
+def _get_current_email_config() -> EmailConfig:
+    """
+    Get current request's email configuration from context.
+
+    The context is set by APIKeyMiddleware from X-API-Key header.
 
     Returns:
         EmailConfig object
 
     Raises:
-        ValueError: If required environment variables are missing
+        ValueError: If no configuration is available (should not happen if middleware works)
     """
-    logger.info("Loading email configuration from environment")
+    config = _current_config.get()
+    if config:
+        return config
 
-    config = EmailConfig(
-        protocol=os.getenv('MCP_EMAIL_PROTOCOL', 'imap'),
-        imap_server=os.getenv('MCP_EMAIL_SERVER', 'imap.163.com'),
-        imap_port=int(os.getenv('MCP_EMAIL_PORT', '993')),
-        smtp_server=os.getenv('MCP_SMTP_SERVER', 'smtp.163.com'),
-        smtp_port=int(os.getenv('MCP_SMTP_PORT', '465')),
-        username=os.getenv('MCP_EMAIL_USERNAME', ''),
-        password=os.getenv('MCP_EMAIL_PASSWORD', ''),
-        save_path=os.getenv('MCP_SAVE_PATH', os.path.expanduser('~/email-attachments'))
+    # This should not happen if middleware is working correctly
+    logger.error("No email config found in context - API key middleware should have caught this")
+    raise ValueError(
+        "No email configuration available. "
+        "Make sure you are sending X-API-Key header with a valid API key."
     )
 
-    # Validate required fields
-    if not config.username:
-        logger.error("MCP_EMAIL_USERNAME not set in .env")
-        raise ValueError("MCP_EMAIL_USERNAME environment variable is required")
-    if not config.password:
-        logger.error("MCP_EMAIL_PASSWORD not set in .env")
-        raise ValueError("MCP_EMAIL_PASSWORD environment variable is required")
 
-    logger.info(f"✓ Email configured for: {config.username}")
-    logger.debug(f"  IMAP: {config.imap_server}:{config.imap_port}")
-    logger.debug(f"  SMTP: {config.smtp_server}:{config.smtp_port}")
+@contextmanager
+def set_email_config_context(api_key: Optional[str]):
+    """
+    Context manager to set email config from API key.
 
-    return config
+    Args:
+        api_key: API key from request header
+    """
+    if api_key:
+        config = _get_email_config_from_db(api_key)
+        token = _current_config.set(config) if config else None
+        try:
+            yield
+        finally:
+            if token:
+                _current_config.reset(token)
+    else:
+        yield
+
+
+def _get_email_config() -> EmailConfig:
+    """Get email configuration - alias for _get_current_email_config for backward compatibility."""
+    return _get_current_email_config()
 
 
 def _format_messages_markdown(messages: list, total_count: int = 0) -> str:
@@ -314,6 +461,19 @@ if __name__ == "__main__":
     logger.setLevel(log_level)
     for handler in logger.handlers:
         handler.setLevel(log_level)
+
+    # Get the HTTP app instance and add middleware
+    # Note: http_app() returns a new instance each time, so we cache it
+    if not hasattr(mcp, '_cached_http_app'):
+        mcp._cached_http_app = mcp.http_app()
+        mcp._cached_http_app.add_middleware(HTTPAPIKeyMiddleware)
+        logger.info("✓ HTTP API Key middleware added to Starlette app")
+
+        # Patch http_app method to return cached instance
+        original_http_app = mcp.http_app
+        def cached_http_app(**kwargs):
+            return mcp._cached_http_app
+        mcp.http_app = cached_http_app
 
     print()
     print("=" * 60)

@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>邮箱 MCP 配置管理</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        #app {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+            color: #2c3e50;
+        }
+
+        .api-key-section {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .api-key-display {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+
+        .api-key-value {
+            font-family: 'Monaco', 'Menlo', monospace;
+            background: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            font-size: 13px;
+            max-width: 400px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #3498db;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2980b9;
+        }
+
+        .btn-success {
+            background: #27ae60;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #229954;
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+
+        .btn-secondary {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #7f8c8d;
+        }
+
+        .btn-sm {
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+
+        .content {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+
+        .panel h2 {
+            font-size: 18px;
+            margin-bottom: 15px;
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+
+        .form-group .help-text {
+            font-size: 12px;
+            color: #777;
+            margin-top: 4px;
+        }
+
+        .config-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .config-item {
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 15px;
+            background: #fafafa;
+        }
+
+        .config-item.active {
+            border-color: #27ae60;
+            background: #f0fdf4;
+        }
+
+        .config-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .config-name {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .config-email {
+            font-size: 13px;
+            color: #777;
+        }
+
+        .config-api-key {
+            display: flex;
+            align-items: center;
+            padding: 8px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            font-size: 13px;
+        }
+
+        .api-key-text {
+            flex: 1;
+            font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+            font-size: 11px;
+            color: #333;
+            word-break: break-all;
+            padding: 0 10px;
+        }
+
+        .config-meta {
+            display: flex;
+            gap: 10px;
+            font-size: 12px;
+            color: #777;
+            margin-bottom: 10px;
+        }
+
+        .config-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .status-badge {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .status-success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #777;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #777;
+        }
+
+        .empty-state svg {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 15px;
+            opacity: 0.5;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal h3 {
+            margin-bottom: 15px;
+            color: #2c3e50;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .provider-info {
+            background: #e8f4f8;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 13px;
+            color: #2c3e50;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 0.8s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="header">
+            <h1>📧 邮箱 MCP 配置管理</h1>
+            <p style="color: #666; margin-top: 10px;">添加邮箱配置后，每个配置会生成独立的 API 密钥</p>
+        </div>
+
+        <div class="content">
+            <!-- 左侧面板: 添加新配置 -->
+            <div class="panel">
+                <h2>添加邮箱配置</h2>
+
+                <div v-if="message" :class="['alert', 'alert-' + message.type]">
+                    {{ message.text }}
+                </div>
+
+                <form @submit.prevent="addConfig">
+                    <div class="form-group">
+                        <label>配置名称 *</label>
+                        <input v-model="newConfig.name" placeholder="例如: 工作邮箱" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>邮箱提供商 *</label>
+                        <select v-model="newConfig.provider" @change="onProviderChange" required>
+                            <option value="">-- 请选择提供商 --</option>
+                            <option value="163">163网易邮箱</option>
+                            <option value="126">126网易邮箱</option>
+                            <option value="yeah">Yeah网易邮箱</option>
+                            <option value="qq">QQ邮箱</option>
+                            <option value="gmail">Gmail</option>
+                            <option value="outlook">Outlook</option>
+                            <option value="icloud">iCloud</option>
+                            <option value="aliyun">阿里云邮箱</option>
+                            <option value="custom">自定义</option>
+                        </select>
+                    </div>
+
+                    <div v-if="newConfig.provider === 'custom'" class="form-group">
+                        <label>IMAP 服务器 *</label>
+                        <input v-model="newConfig.imap_server" placeholder="imap.example.com">
+                    </div>
+
+                    <div v-if="newConfig.provider === 'custom'" class="form-group">
+                        <label>IMAP 端口</label>
+                        <input v-model.number="newConfig.imap_port" type="number" placeholder="993">
+                    </div>
+
+                    <div v-if="newConfig.provider === 'custom'" class="form-group">
+                        <label>SMTP 服务器 *</label>
+                        <input v-model="newConfig.smtp_server" placeholder="smtp.example.com">
+                    </div>
+
+                    <div v-if="newConfig.provider === 'custom'" class="form-group">
+                        <label>SMTP 端口</label>
+                        <input v-model.number="newConfig.smtp_port" type="number" placeholder="465">
+                    </div>
+
+                    <div class="form-group">
+                        <label>邮箱用户名 *</label>
+                        <input v-model="newConfig.username" placeholder="your@email.com" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>密码 / 授权码 *</label>
+                        <input v-model="newConfig.password" type="password" placeholder="您的密码或授权码" required>
+                        <div class="help-text">
+                            163/QQ邮箱请使用授权码，而非登录密码
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-success" :disabled="loading">
+                        <span v-if="loading" class="spinner"></span>
+                        {{ loading ? '添加中...' : '添加配置' }}
+                    </button>
+                </form>
+
+                <div v-if="selectedProvider" class="provider-info">
+                    <strong>{{ selectedProvider.name }}</strong><br>
+                    IMAP: {{ selectedProvider.imap_server }}:{{ selectedProvider.imap_port }}<br>
+                    SMTP: {{ selectedProvider.smtp_server }}:{{ selectedProvider.smtp_port }}
+                </div>
+            </div>
+
+            <!-- 右侧面板: 配置列表 -->
+            <div class="panel">
+                <h2>我的配置</h2>
+
+                <div v-if="loading && !configs.length" class="loading">
+                    加载配置中...
+                </div>
+
+                <div v-else-if="!configs.length" class="empty-state">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                    </svg>
+                    <p>还没有邮箱配置</p>
+                    <p>添加您的第一个邮箱配置以开始使用</p>
+                </div>
+
+                <div v-else class="config-list">
+                    <div v-for="config in configs" :key="config.id"
+                         :class="['config-item', { active: config.is_active }]">
+                        <div class="config-header">
+                            <div>
+                                <div class="config-name">{{ config.name }}</div>
+                                <div class="config-email">{{ config.username }}</div>
+                            </div>
+                            <div v-if="config.last_test_status"
+                                 :class="['status-badge', 'status-' + config.last_test_status]">
+                                {{ config.last_test_status === 'success' ? '成功' : '失败' }}
+                            </div>
+                        </div>
+
+                        <div class="config-api-key">
+                            <strong>API 密钥:</strong>
+                            <code class="api-key-text">{{ config.api_key }}</code>
+                            <button @click="copyConfigApiKey(config.api_key)" class="btn btn-sm btn-primary" style="margin-left: 10px;">
+                                {{ copiedKey === config.api_key ? '已复制!' : '复制' }}
+                            </button>
+                        </div>
+
+                        <div class="config-meta">
+                            <span>{{ getProviderName(config.provider) }}</span>
+                            <span>{{ config.imap_server }}:{{ config.imap_port }}</span>
+                        </div>
+
+                        <div class="config-actions">
+                            <button @click="testConnection(config)" class="btn btn-primary btn-sm"
+                                    :disabled="testing === config.id">
+                                <span v-if="testing === config.id" class="spinner"></span>
+                                {{ testing === config.id ? '测试中...' : '测试' }}
+                            </button>
+                            <button v-if="!config.is_active" @click="activateConfig(config)"
+                                    class="btn btn-success btn-sm">
+                                激活
+                            </button>
+                            <button v-else @click="deactivateConfig(config)" class="btn btn-secondary btn-sm">
+                                停用
+                            </button>
+                            <button @click="deleteConfig(config)" class="btn btn-danger btn-sm">
+                                删除
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 测试结果弹窗 -->
+        <div v-if="testResult" class="modal-overlay" @click.self="testResult = null">
+            <div class="modal">
+                <h3>连接测试结果</h3>
+                <div :class="['alert', 'alert-' + (testResult.status === 'success' ? 'success' : 'error')]">
+                    <strong>{{ testResult.status === 'success' ? '成功' : '失败' }}:</strong> {{ testResult.message }}
+                </div>
+                <div v-if="testResult.imap_test">
+                    <p><strong>IMAP:</strong> {{ testResult.imap_test.message }}</p>
+                </div>
+                <div v-if="testResult.smtp_test">
+                    <p><strong>SMTP:</strong> {{ testResult.smtp_test.message }}</p>
+                </div>
+                <div class="modal-actions">
+                    <button @click="testResult = null" class="btn btn-primary">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    apiBaseUrl: window.location.protocol + '//' + window.location.hostname + ':8002',
+                    copiedKey: null,
+                    configs: [],
+                    providers: [],
+                    loading: false,
+                    testing: null,
+                    message: null,
+                    newConfig: {
+                        name: '',
+                        provider: '',
+                        imap_server: '',
+                        imap_port: 993,
+                        smtp_server: '',
+                        smtp_port: 465,
+                        username: '',
+                        password: ''
+                    },
+                    testResult: null
+                };
+            },
+            computed: {
+                selectedProvider() {
+                    if (!this.newConfig.provider || this.newConfig.provider === 'custom') {
+                        return null;
+                    }
+                    return this.providers.find(p => p.id === this.newConfig.provider);
+                }
+            },
+            mounted() {
+                this.loadConfigs();
+                this.loadProviders();
+            },
+            methods: {
+                copyConfigApiKey(apiKey) {
+                    navigator.clipboard.writeText(apiKey);
+                    this.copiedKey = apiKey;
+                    setTimeout(() => {
+                        this.copiedKey = null;
+                    }, 2000);
+                },
+                async loadProviders() {
+                    try {
+                        const response = await axios.get(`${this.apiBaseUrl}/api/providers`);
+                        this.providers = response.data.providers;
+                    } catch (error) {
+                        console.error('Failed to load providers:', error);
+                    }
+                },
+                async loadConfigs() {
+                    this.loading = true;
+                    try {
+                        const response = await axios.get(`${this.apiBaseUrl}/api/config`);
+                        this.configs = response.data;
+                    } catch (error) {
+                        this.showMessage('加载配置失败: ' + (error.response?.data?.detail || error.message), 'error');
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                async addConfig() {
+                    this.loading = true;
+                    try {
+                        await axios.post(`${this.apiBaseUrl}/api/config`, this.newConfig);
+                        this.showMessage('配置添加成功! 已生成 API 密钥', 'success');
+                        this.resetForm();
+                        await this.loadConfigs();
+                    } catch (error) {
+                        this.showMessage('添加配置失败: ' + (error.response?.data?.detail || error.message), 'error');
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                async testConnection(config) {
+                    this.testing = config.id;
+                    try {
+                        const response = await axios.post(
+                            `${this.apiBaseUrl}/api/config/${config.id}/test`,
+                            {},
+                            {
+                                headers: {
+                                    'X-API-Key': config.api_key
+                                }
+                            }
+                        );
+                        this.testResult = response.data;
+                    } catch (error) {
+                        this.testResult = {
+                            status: 'failed',
+                            message: error.response?.data?.detail || error.message
+                        };
+                    } finally {
+                        this.testing = null;
+                    }
+                },
+                async activateConfig(config) {
+                    try {
+                        await axios.put(`${this.apiBaseUrl}/api/config/${config.id}`,
+                            { is_active: true },
+                            {
+                                headers: {
+                                    'X-API-Key': config.api_key
+                                }
+                            }
+                        );
+                        await this.loadConfigs();
+                        this.showMessage('配置已激活!', 'success');
+                    } catch (error) {
+                        this.showMessage('激活失败: ' + (error.response?.data?.detail || error.message), 'error');
+                    }
+                },
+                async deactivateConfig(config) {
+                    try {
+                        await axios.put(`${this.apiBaseUrl}/api/config/${config.id}`,
+                            { is_active: false },
+                            {
+                                headers: {
+                                    'X-API-Key': config.api_key
+                                }
+                            }
+                        );
+                        await this.loadConfigs();
+                        this.showMessage('配置已停用!', 'success');
+                    } catch (error) {
+                        this.showMessage('停用失败: ' + (error.response?.data?.detail || error.message), 'error');
+                    }
+                },
+                async deleteConfig(config) {
+                    if (!confirm(`确定要删除配置 "${config.name}" 吗?`)) {
+                        return;
+                    }
+                    try {
+                        await axios.delete(`${this.apiBaseUrl}/api/config/${config.id}`, {
+                            headers: {
+                                'X-API-Key': config.api_key
+                            }
+                        });
+                        await this.loadConfigs();
+                        this.showMessage('配置已删除!', 'success');
+                    } catch (error) {
+                        this.showMessage('删除失败: ' + (error.response?.data?.detail || error.message), 'error');
+                    }
+                },
+                onProviderChange() {
+                    if (this.newConfig.provider && this.newConfig.provider !== 'custom') {
+                        const provider = this.providers.find(p => p.id === this.newConfig.provider);
+                        if (provider) {
+                            this.newConfig.imap_server = provider.imap_server;
+                            this.newConfig.imap_port = provider.imap_port;
+                            this.newConfig.smtp_server = provider.smtp_server;
+                            this.newConfig.smtp_port = provider.smtp_port;
+                        }
+                    }
+                },
+                getProviderName(providerId) {
+                    const provider = this.providers.find(p => p.id === providerId);
+                    return provider ? provider.name : providerId;
+                },
+                resetForm() {
+                    this.newConfig = {
+                        name: '',
+                        provider: '',
+                        imap_server: '',
+                        imap_port: 993,
+                        smtp_server: '',
+                        smtp_port: 465,
+                        username: '',
+                        password: ''
+                    };
+                },
+                showMessage(text, type) {
+                    this.message = { text, type };
+                    setTimeout(() => {
+                        this.message = null;
+                    }, 5000);
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

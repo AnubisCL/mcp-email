@@ -2,13 +2,21 @@
   "metadata": {
     "mcpId": "mcp-server-email",
     "name": "Email MCP Server",
-    "description": "Provides email functionality for various email providers including IMAP reading and SMTP sending",
+    "description": "Multi-user email service with support for 163, Gmail, Outlook, QQ, and custom IMAP/SMTP servers",
     "version": "1.0.0"
   },
   "contact": {
-    "author": "chai lei",
-    "email": "anubiscl@163.com",
-    "documentation": "https://git.404.net.cn/vibe-team/email-mcp"
+    "author": "Vibe Team",
+    "email": "dev@vibe-team.com",
+    "documentation": "https://docs.vibe-team.com/mcp/email"
   },
-  "managementEndpoints": []
+  "managementEndpoints": [
+    {
+      "id": "config-manager",
+      "name": "Email Configuration Manager",
+      "description": "Configure email accounts and API keys",
+      "type": "iframe",
+      "endpoint": "http://127.0.0.1:8002/config-ui/index.html"
+    }
+  ]
 }
