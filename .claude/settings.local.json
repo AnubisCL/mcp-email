@@ -5,7 +5,31 @@
       "Bash(chmod:*)",
       "Bash(timeout:*)",
       "Bash(ls:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(if:*)",
+      "Bash(then)",
+      "Bash(else)",
+      "Bash(fi:*)",
+      "Bash(__NEW_LINE_9252226c71f17333__ if [ -z \"$MCP_EMAIL_USERNAME\" ])",
+      "Bash(echo:*)",
+      "Bash(lsof:*)",
+      "Bash(pip show:*)",
+      "Bash(then echo \"✓ .env file exists\")",
+      "Bash(else echo \"Creating .env file...\")",
+      "Bash(PYTHONPATH=\"src\" python:*)",
+      "Bash(xargs kill:*)",
+      "Bash(curl:*)",
+      "WebSearch",
+      "Bash(python3:*)",
+      "mcp__GitHub__get_issue",
+      "mcp__GitHub__get_pull_request_comments",
+      "mcp__GitHub__list_pull_requests",
+      "Bash(pip3 show:*)"
     ]
+  },
+  "mcpServers": {
+    "email": {
+      "url": "http://localhost:8001/mcp"
+    }
   }
 }

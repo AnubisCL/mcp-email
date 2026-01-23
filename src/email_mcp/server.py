@@ -1,13 +1,24 @@
 #!/usr/bin/env python3
 """
-Email MCP Server
+Email MCP Server - Streamable HTTP Mode
 
 A Model Context Protocol server that provides email functionality for
 various email providers including 163.com, Gmail, Outlook, etc.
+
+Environment variables (loaded from .env file):
+    MCP_EMAIL_USERNAME: Email account username (required)
+    MCP_EMAIL_PASSWORD: Email password or app-specific password (required)
+    MCP_EMAIL_SERVER: IMAP server (default: imap.163.com)
+    MCP_EMAIL_PORT: IMAP port (default: 993)
+    MCP_SMTP_SERVER: SMTP server (default: smtp.163.com)
+    MCP_SMTP_PORT: SMTP port (default: 465)
+    MCP_SAVE_PATH: Attachment save path (default: ~/email-attachments)
+    MCP_LOG_LEVEL: Log level - DEBUG, INFO, WARNING, ERROR (default: INFO)
 """
 
 import os
-import json
+import sys
+from pathlib import Path
 from typing import Dict, Any
 
 from fastmcp import FastMCP
@@ -20,6 +31,31 @@ from email_mcp.models import (
     ResponseFormat
 )
 from email_mcp.client import EmailClient
+from email_mcp.logging_config import get_logger, get_log_level_from_env
+
+
+def load_env_file():
+    """Load .env file from project root if it exists."""
+    current_path = Path(__file__).resolve()
+    project_root = current_path.parent.parent.parent
+    env_file = project_root / ".env"
+
+    if env_file.exists():
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(env_file)
+            print(f"✓ Loaded environment from: {env_file}")
+        except ImportError:
+            print("⚠️  python-dotenv not installed, run: pip install python-dotenv")
+        except Exception as e:
+            print(f"⚠️  Failed to load .env: {e}")
+
+
+# Load .env at import time
+load_env_file()
+
+# Initialize logger with log level from env
+logger = get_logger("server")
 
 # Initialize MCP server
 mcp = FastMCP("email_mcp")
@@ -35,6 +71,8 @@ def _get_email_config() -> EmailConfig:
     Raises:
         ValueError: If required environment variables are missing
     """
+    logger.info("Loading email configuration from environment")
+
     config = EmailConfig(
         protocol=os.getenv('MCP_EMAIL_PROTOCOL', 'imap'),
         imap_server=os.getenv('MCP_EMAIL_SERVER', 'imap.163.com'),
@@ -48,24 +86,21 @@ def _get_email_config() -> EmailConfig:
 
     # Validate required fields
     if not config.username:
+        logger.error("MCP_EMAIL_USERNAME not set in .env")
         raise ValueError("MCP_EMAIL_USERNAME environment variable is required")
     if not config.password:
+        logger.error("MCP_EMAIL_PASSWORD not set in .env")
         raise ValueError("MCP_EMAIL_PASSWORD environment variable is required")
+
+    logger.info(f"✓ Email configured for: {config.username}")
+    logger.debug(f"  IMAP: {config.imap_server}:{config.imap_port}")
+    logger.debug(f"  SMTP: {config.smtp_server}:{config.smtp_port}")
 
     return config
 
 
 def _format_messages_markdown(messages: list, total_count: int = 0) -> str:
-    """
-    Format email messages as Markdown.
-
-    Args:
-        messages: List of EmailMessage dictionaries
-        total_count: Total number of messages matching filter
-
-    Returns:
-        Markdown formatted string
-    """
+    """Format email messages as Markdown."""
     if not messages:
         return "No emails found matching the specified criteria."
 
@@ -82,7 +117,6 @@ def _format_messages_markdown(messages: list, total_count: int = 0) -> str:
         lines.append("")
 
         if msg.content:
-            # Truncate long content for readability
             content_preview = msg.content[:500]
             if len(msg.content) > 500:
                 content_preview += "..."
@@ -100,16 +134,8 @@ def _format_messages_markdown(messages: list, total_count: int = 0) -> str:
 
 
 def _format_messages_json(messages: list, total_count: int = 0) -> str:
-    """
-    Format email messages as JSON.
-
-    Args:
-        messages: List of EmailMessage dictionaries
-        total_count: Total number of messages matching filter
-
-    Returns:
-        JSON formatted string
-    """
+    """Format email messages as JSON."""
+    import json
     response = {
         "total": total_count,
         "count": len(messages),
@@ -144,66 +170,31 @@ def email_list_messages(params: ListMessagesInput) -> str:
             - response_format (ResponseFormat): 'markdown' or 'json' output
 
     Returns:
-        str: Formatted response containing email messages.
-
-        Markdown format (default):
-        Human-readable text with headers, preview of content, and attachment list.
-
-        JSON format:
-        {
-            "total": int,           # Total matching emails
-            "count": int,           # Number of emails returned
-            "messages": [           # Array of email objects
-                {
-                    "date": str,    # Formatted date string
-                    "subject": str, # Email subject
-                    "sender": str,  # Sender address
-                    "receiver": str,# Recipient address
-                    "content": str, # Email body (optional)
-                    "content_type": str, # MIME type
-                    "files": [str] # Attachment filenames
-                }
-            ]
-        }
-
-        Error response:
-        "Error: <error message with actionable guidance>"
-
-    Examples:
-        - List latest 10 unread emails: params with count=10, message_type="UNSEEN"
-        - Get 5 recent emails in JSON: params with count=5, response_format="json"
-        - Fetch oldest 20 seen emails: params with count=20, message_type="SEEN", latest_first=False
-
-    Error Handling:
-        - Authentication errors suggest checking credentials and using app passwords
-        - Connection errors provide server/port configuration guidance
-        - Invalid parameters are validated by Pydantic model before execution
-
-    Environment Variables Required:
-        - MCP_EMAIL_USERNAME: Email account username
-        - MCP_EMAIL_PASSWORD: Email password or app-specific password
-        - MCP_EMAIL_SERVER: IMAP server (default: imap.163.com)
-        - MCP_EMAIL_PORT: IMAP port (default: 993)
+        str: Formatted response containing email messages
     """
+    logger.info(f"Tool 'email_list_messages' called: count={params.count}, "
+                f"type={params.message_type.value}, format={params.response_format.value}")
+
     try:
-        # Load configuration
         config = _get_email_config()
         client = EmailClient(config)
 
-        # Fetch messages
+        logger.debug(f"Fetching {params.count} messages of type '{params.message_type.value}'")
         messages = client.list_messages(
             count=params.count,
             message_type=params.message_type.value,
             latest_first=params.latest_first
         )
 
-        # Format response
+        logger.info(f"✓ Retrieved {len(messages)} messages")
+
         if params.response_format == ResponseFormat.JSON:
             return _format_messages_json(messages, total_count=len(messages))
         else:
             return _format_messages_markdown(messages, total_count=len(messages))
 
     except Exception as e:
+        logger.error(f"Error in email_list_messages: {type(e).__name__}: {str(e)}")
         from email_mcp.utils import format_error_message
         return format_error_message(e, "listing email messages")
 
@@ -223,8 +214,7 @@ def email_send_message(params: SendMessageInput) -> str:
     Send an email message to specified recipients.
 
     This tool sends an email using SMTP protocol. It supports both plain text
-    and HTML content, and can attach multiple files. The email is sent from
-    the configured account (via environment variables).
+    and HTML content, and can attach multiple files.
 
     Args:
         params (SendMessageInput): Validated input parameters containing:
@@ -235,41 +225,18 @@ def email_send_message(params: SendMessageInput) -> str:
             - attachments (List[str]): List of file paths to attach (max 10)
 
     Returns:
-        str: Success confirmation or error message.
-
-        Success response:
-        "Email sent successfully to <recipient>"
-
-        Error response:
-        "Error: <error message with actionable guidance>"
-
-    Examples:
-        - Send plain text email: params with to="user@example.com", subject="Hello", content="Hi there"
-        - Send HTML email: params with to="user@example.com", subject="Newsletter", content_type="html", content="<h1>Welcome</h1>"
-        - Send with attachments: params with to="user@example.com", attachments=["/path/to/file.pdf"]
-
-    Error Handling:
-        - Invalid email addresses return validation errors
-        - Missing attachment files report the specific file path
-        - Authentication errors provide credential configuration guidance
-        - Network errors suggest checking server settings and firewall
-
-    Environment Variables Required:
-        - MCP_EMAIL_USERNAME: Email account username
-        - MCP_EMAIL_PASSWORD: Email password or app-specific password
-        - MCP_SMTP_SERVER: SMTP server (default: smtp.163.com)
-        - MCP_SMTP_PORT: SMTP port (default: 465)
-
-    Note:
-        This tool is NOT idempotent - calling it multiple times will send
-        multiple emails with the same content.
+        str: Success confirmation or error message
     """
+    content_preview = params.content[:100] + "..." if len(params.content) > 100 else params.content
+
+    logger.info(f"Tool 'email_send_message' called: to={params.to}, "
+                f"subject={params.subject}, attachments={len(params.attachments)}")
+
     try:
-        # Load configuration
         config = _get_email_config()
         client = EmailClient(config)
 
-        # Send message
+        logger.debug(f"Sending email to {params.to} via {config.smtp_server}:{config.smtp_port}")
         success = client.send_message(
             to=params.to,
             subject=params.subject,
@@ -279,81 +246,58 @@ def email_send_message(params: SendMessageInput) -> str:
         )
 
         if success:
+            logger.info(f"✓ Email sent successfully to {params.to}")
             return f"Email sent successfully to {params.to}"
         else:
+            logger.warning(f"Email send returned False for {params.to}")
             return "Failed to send email"
 
     except Exception as e:
+        logger.error(f"Error in email_send_message: {type(e).__name__}: {str(e)}")
         from email_mcp.utils import format_error_message
         return format_error_message(e, "sending email message")
 
 
 if __name__ == "__main__":
     import argparse
-    import sys
 
     parser = argparse.ArgumentParser(
-        description="Email MCP Server - Provides email functionality via MCP protocol",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Run with stdio transport (default)
-  python src/email_mcp/server.py
-
-  # Run with HTTP transport
-  python src/email_mcp/server.py --transport streamable-http --port 8001
-
-  # Run with environment variables
-  MCP_EMAIL_USERNAME=user@163.com MCP_EMAIL_PASSWORD=auth-code \\
-      python src/email_mcp/server.py --transport streamable-http
-        """
+        description="Email MCP Server - Streamable HTTP Mode",
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
-    parser.add_argument(
-        "--transport",
-        choices=["stdio", "streamable-http"],
-        default="stdio",
-        help="Transport protocol: stdio (default) or streamable-http"
-    )
     parser.add_argument(
         "--port",
         type=int,
-        default=8001,
-        help="HTTP port for streamable-http transport (default: 8001)"
+        default=int(os.getenv('MCP_PORT', '8001')),
+        help="HTTP port (default: 8001 or from MCP_PORT env var)"
     )
     parser.add_argument(
         "--host",
-        default="127.0.0.1",
-        help="HTTP host for streamable-http transport (default: 127.0.0.1)"
+        default=os.getenv('MCP_HOST', '127.0.0.1'),
+        help="HTTP host (default: 127.0.0.1 or from MCP_HOST env var)"
     )
 
     args = parser.parse_args()
 
-    # Support --help flag
-    if "--help" in sys.argv or "-h" in sys.argv:
-        print("Email MCP Server")
-        print("")
-        print("Transport Modes:")
-        print("  stdio              - For local MCP clients (default)")
-        print("  streamable-http    - For remote/web MCP clients")
-        print("")
-        print("Environment Variables:")
-        print("  MCP_EMAIL_USERNAME  - Email account username (required)")
-        print("  MCP_EMAIL_PASSWORD  - Email password or app password (required)")
-        print("  MCP_EMAIL_SERVER    - IMAP server (default: imap.163.com)")
-        print("  MCP_EMAIL_PORT      - IMAP port (default: 993)")
-        print("  MCP_SMTP_SERVER     - SMTP server (default: smtp.163.com)")
-        print("  MCP_SMTP_PORT       - SMTP port (default: 465)")
-        print("  MCP_SAVE_PATH       - Attachment save path (default: ~/email-attachments)")
-        print("")
-        print("See STREAMABLE_HTTP_GUIDE.md for detailed deployment options.")
-        sys.exit(0)
+    # Set log level from environment
+    import logging
+    log_level = get_log_level_from_env()
+    logger.setLevel(log_level)
+    for handler in logger.handlers:
+        handler.setLevel(log_level)
 
-    # Run server with selected transport
-    if args.transport == "streamable-http":
-        print(f"Starting Email MCP Server with streamable-http on {args.host}:{args.port}")
-        print(f"MCP endpoint: http://{args.host}:{args.port}/mcp")
-        mcp.run(transport="streamable-http", port=args.port, host=args.host)
-    else:
-        print("Starting Email MCP Server with stdio transport")
-        mcp.run()
+    print()
+    print("=" * 60)
+    print("  Email MCP Server - Streamable HTTP Mode")
+    print("=" * 60)
+    print(f"  Host: {args.host}")
+    print(f"  Port: {args.port}")
+    print(f"  Endpoint: http://{args.host}:{args.port}/mcp")
+    print(f"  Log Level: {logging.getLevelName(log_level)}")
+    print("=" * 60)
+    print()
+    print("Press Ctrl+C to stop the server")
+    print()
+
+    mcp.run(transport="streamable-http", port=args.port, host=args.host)
