@@ -154,7 +154,7 @@ def _format_messages_json(messages: list, total_count: int = 0) -> str:
         "openWorldHint": True
     }
 )
-def email_list_messages(params: ListMessagesInput) -> str:
+def email_list_messages(params: dict | str | ListMessagesInput) -> str:
     """
     List email messages from INBOX with optional filtering.
 
@@ -163,7 +163,7 @@ def email_list_messages(params: ListMessagesInput) -> str:
     control. The tool does NOT modify any emails - it only reads and lists them.
 
     Args:
-        params (ListMessagesInput): Validated input parameters containing:
+        params: Validated input parameters containing:
             - count (int): Number of emails to retrieve, 1-100 (default: 10)
             - message_type (EmailMessageType): Filter by ALL/UNSEEN/SEEN/RECENT/ANSWERED/FLAGGED
             - latest_first (bool): Retrieve newest first (True) or oldest first (False)
@@ -172,23 +172,37 @@ def email_list_messages(params: ListMessagesInput) -> str:
     Returns:
         str: Formatted response containing email messages
     """
-    logger.info(f"Tool 'email_list_messages' called: count={params.count}, "
-                f"type={params.message_type.value}, format={params.response_format.value}")
+    import json
+
+    # Handle both string and dict inputs
+    if isinstance(params, str):
+        logger.debug("Parsing arguments from JSON string")
+        params_dict = json.loads(params)
+    elif isinstance(params, dict):
+        params_dict = params
+    else:
+        params_dict = params.model_dump()
+
+    # Validate with Pydantic model
+    validated_params = ListMessagesInput(**params_dict)
+
+    logger.info(f"Tool 'email_list_messages' called: count={validated_params.count}, "
+                f"type={validated_params.message_type.value}, format={validated_params.response_format.value}")
 
     try:
         config = _get_email_config()
         client = EmailClient(config)
 
-        logger.debug(f"Fetching {params.count} messages of type '{params.message_type.value}'")
+        logger.debug(f"Fetching {validated_params.count} messages of type '{validated_params.message_type.value}'")
         messages = client.list_messages(
-            count=params.count,
-            message_type=params.message_type.value,
-            latest_first=params.latest_first
+            count=validated_params.count,
+            message_type=validated_params.message_type.value,
+            latest_first=validated_params.latest_first
         )
 
         logger.info(f"✓ Retrieved {len(messages)} messages")
 
-        if params.response_format == ResponseFormat.JSON:
+        if validated_params.response_format == ResponseFormat.JSON:
             return _format_messages_json(messages, total_count=len(messages))
         else:
             return _format_messages_markdown(messages, total_count=len(messages))
@@ -209,7 +223,7 @@ def email_list_messages(params: ListMessagesInput) -> str:
         "openWorldHint": True
     }
 )
-def email_send_message(params: SendMessageInput) -> str:
+def email_send_message(params: dict | str | SendMessageInput) -> str:
     """
     Send an email message to specified recipients.
 
@@ -217,7 +231,7 @@ def email_send_message(params: SendMessageInput) -> str:
     and HTML content, and can attach multiple files.
 
     Args:
-        params (SendMessageInput): Validated input parameters containing:
+        params: Validated input parameters containing:
             - to (str): Recipient email address
             - subject (str): Email subject line
             - content (str): Email body content
@@ -227,29 +241,43 @@ def email_send_message(params: SendMessageInput) -> str:
     Returns:
         str: Success confirmation or error message
     """
-    content_preview = params.content[:100] + "..." if len(params.content) > 100 else params.content
+    import json
 
-    logger.info(f"Tool 'email_send_message' called: to={params.to}, "
-                f"subject={params.subject}, attachments={len(params.attachments)}")
+    # Handle both string and dict inputs
+    if isinstance(params, str):
+        logger.debug("Parsing arguments from JSON string")
+        params_dict = json.loads(params)
+    elif isinstance(params, dict):
+        params_dict = params
+    else:
+        params_dict = params.model_dump()
+
+    # Validate with Pydantic model
+    validated_params = SendMessageInput(**params_dict)
+
+    content_preview = validated_params.content[:100] + "..." if len(validated_params.content) > 100 else validated_params.content
+
+    logger.info(f"Tool 'email_send_message' called: to={validated_params.to}, "
+                f"subject={validated_params.subject}, attachments={len(validated_params.attachments)}")
 
     try:
         config = _get_email_config()
         client = EmailClient(config)
 
-        logger.debug(f"Sending email to {params.to} via {config.smtp_server}:{config.smtp_port}")
+        logger.debug(f"Sending email to {validated_params.to} via {config.smtp_server}:{config.smtp_port}")
         success = client.send_message(
-            to=params.to,
-            subject=params.subject,
-            content=params.content,
-            content_type=params.content_type.value,
-            attachments=params.attachments
+            to=validated_params.to,
+            subject=validated_params.subject,
+            content=validated_params.content,
+            content_type=validated_params.content_type.value,
+            attachments=validated_params.attachments
         )
 
         if success:
-            logger.info(f"✓ Email sent successfully to {params.to}")
-            return f"Email sent successfully to {params.to}"
+            logger.info(f"✓ Email sent successfully to {validated_params.to}")
+            return f"Email sent successfully to {validated_params.to}"
         else:
-            logger.warning(f"Email send returned False for {params.to}")
+            logger.warning(f"Email send returned False for {validated_params.to}")
             return "Failed to send email"
 
     except Exception as e:
