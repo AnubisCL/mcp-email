@@ -93,14 +93,14 @@ async def health_check():
     return {"status": "healthy", "service": "email-mcp-config"}
 
 
-# Root endpoint - redirect to config UI
+# Root endpoint - redirect to config UI (only when running standalone)
 @app.get("/")
 async def root():
     """Root endpoint - redirect to configuration UI."""
     return RedirectResponse(url="/config-ui/index.html")
 
 
-# Mount static files for configuration UI
+# Mount static files for configuration UI (only when running standalone)
 # Get the absolute path to config-ui directory
 _config_ui_path = os.path.join(os.path.dirname(__file__), "../../config-ui")
 if os.path.exists(_config_ui_path):
@@ -108,14 +108,15 @@ if os.path.exists(_config_ui_path):
 
 
 # Email configuration endpoints
-@app.get("/api/config", response_model=List[EmailConfigResponse], tags=["Email Configuration"])
+# Note: When mounted to MCP server, these are accessible under /api/configs
+@app.get("/configs", response_model=List[EmailConfigResponse], tags=["Email Configuration"])
 async def get_email_configs(db: Session = Depends(get_db)):
     """Get all email configurations."""
     configs = db.query(EmailConfig).order_by(EmailConfig.created_at.desc()).all()
     return configs
 
 
-@app.post("/api/config", response_model=EmailConfigResponse, status_code=status.HTTP_201_CREATED, tags=["Email Configuration"])
+@app.post("/configs", response_model=EmailConfigResponse, status_code=status.HTTP_201_CREATED, tags=["Email Configuration"])
 async def create_email_config(
     config: CreateEmailConfigRequest,
     db: Session = Depends(get_db)
@@ -176,7 +177,7 @@ async def create_email_config(
     return email_config
 
 
-@app.put("/api/config/{config_id}", response_model=EmailConfigResponse, tags=["Email Configuration"])
+@app.put("/configs/{config_id}", response_model=EmailConfigResponse, tags=["Email Configuration"])
 async def update_email_config(
     config_id: int,
     config_update: UpdateEmailConfigRequest,
@@ -203,7 +204,7 @@ async def update_email_config(
     return current_config
 
 
-@app.delete("/api/config/{config_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Email Configuration"])
+@app.delete("/configs/{config_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Email Configuration"])
 async def delete_email_config(
     config_id: int,
     current_config: EmailConfig = Depends(verify_api_key),
@@ -221,7 +222,7 @@ async def delete_email_config(
     db.commit()
 
 
-@app.post("/api/config/{config_id}/test", response_model=TestConnectionResponse, tags=["Email Configuration"])
+@app.post("/configs/{config_id}/test", response_model=TestConnectionResponse, tags=["Email Configuration"])
 async def test_connection(
     config_id: int,
     current_config: EmailConfig = Depends(verify_api_key),
@@ -254,7 +255,7 @@ async def test_connection(
 
 
 # Provider info endpoint
-@app.get("/api/providers", tags=["Info"])
+@app.get("/providers", tags=["Info"])
 async def get_providers():
     """Get list of supported email providers."""
     return {
@@ -305,6 +306,21 @@ async def server_management_discovery():
             }
         ]
     }
+
+
+# Add server-management route to main MCP app when mounted
+def mount_server_management_route(starlette_app, base_url: str):
+    """Mount the server-management discovery endpoint to the main app."""
+    from starlette.routing import Route
+
+    async def server_management(request):
+        # Import here to avoid circular dependency
+        from email_mcp.api_server import server_management_discovery
+        return await server_management_discovery()
+
+    starlette_app.routes.append(
+        Route("/.well-known/mcp/server-management.json", server_management)
+    )
 
 
 if __name__ == "__main__":

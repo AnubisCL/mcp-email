@@ -14,29 +14,42 @@
 
 ## 🏗️ 架构
 
-Email MCP Server 采用双服务器架构：
+Email MCP Server 采用一体化服务器架构：
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                   Email MCP Server                      │
+│              Email MCP Server (Port 8001)                │
 ├─────────────────────────────────────────────────────────┤
 │                                                           │
-│  ┌──────────────────┐        ┌─────────────────────┐   │
-│  │  MCP Server      │        │  Configuration API  │   │
-│  │  (Port 8001)     │        │  (Port 8002)        │   │
-│  │                  │        │                     │   │
-│  │  • email_list    │        │  • 邮箱配置管理     │   │
-│  │  • email_send    │        │  • API 密钥生成     │   │
-│  │  • MCP 协议      │        │  • 连接测试         │   │
-│  └──────────────────┘        │  • Web 配置界面     │   │
-│         │                   └─────────────────────┘   │
-│         │                            │                 │
-│         └────────────┬───────────────┘                 │
-│                      │                                 │
-│              ┌───────▼────────┐                        │
-│              │  SQLite 数据库  │                        │
-│              │  多用户配置     │                        │
-│              └────────────────┘                        │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │              MCP 协议层                          │   │
+│  │  • /mcp - MCP 协议端点 (需要 API Key)           │   │
+│  │  • email_list_messages - 列出邮件               │   │
+│  │  • email_send_message - 发送邮件                │   │
+│  └─────────────────────────────────────────────────┘   │
+│                           │                              │
+│  ┌────────────────────────┴──────────────────────────┐ │
+│  │              配置管理层 (/api)                     │ │
+│  │  • GET /api/configs - 获取邮箱配置                │ │
+│  │  • POST /api/configs - 创建邮箱配置              │ │
+│  │  • PUT /api/configs/{id} - 更新配置              │ │
+│  │  • DELETE /api/configs/{id} - 删除配置           │ │
+│  │  • POST /api/configs/{id}/test - 测试连接        │ │
+│  │  • GET /api/providers - 获取服务商列表           │ │
+│  └───────────────────────────────────────────────────┘ │
+│                           │                              │
+│  ┌────────────────────────┴──────────────────────────┐ │
+│  │              Web 界面层 (/config-ui)               │ │
+│  │  • 可视化邮箱配置管理                              │ │
+│  │  • API 密钥生成与管理                              │ │
+│  │  • 连接测试                                        │ │
+│  └───────────────────────────────────────────────────┘ │
+│                                                           │
+│  ┌───────────────────────────────────────────────────┐ │
+│  │              SQLite 数据库                        │ │
+│  │  • 多用户邮箱配置存储                             │ │
+│  │  • API 密钥管理                                    │ │
+│  └───────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -50,21 +63,30 @@ pip install -r requirements.txt
 
 ### 2. 启动服务器
 
-**终端 1 - 启动 MCP 服务器：**
-
 ```bash
 ./start.sh
 ```
 
-**终端 2 - 启动配置管理 API：**
+服务器启动后，你将看到：
 
-```bash
-python -m email_mcp.api_server
+```
+============================================================
+  Email MCP Server - All-in-One Mode
+============================================================
+  Host: 127.0.0.1
+  Port: 8001
+  MCP Endpoint: http://127.0.0.1:8001/mcp
+  Config API:   http://127.0.0.1:8001/api
+  Config UI:    http://127.0.0.1:8001/config-ui/index.html
+  Log Level: INFO
+============================================================
+
+Press Ctrl+C to stop the server
 ```
 
 ### 3. 配置邮箱账号
 
-打开浏览器访问：http://127.0.0.1:8002/config-ui/index.html
+打开浏览器访问：http://127.0.0.1:8001/config-ui/index.html
 
 **配置界面功能**：
 
@@ -157,26 +179,26 @@ email-mcp/
 
 ## 🔌 API 端点
 
-### 配置管理 API (http://127.0.0.1:8002)
+所有服务运行在同一个端口（默认 8001）：
 
-#### 邮箱配置管理
+### MCP 协议端点
+- `POST /mcp` - MCP 协议端点（需要 `X-API-Key` 请求头）
+- 支持 MCP 协议操作：`initialize`, `tools/list`, `tools/call`, `resources/list`, `resources/read`
+
+### 配置管理 API (/api)
 - `GET /api/configs` - 获取所有邮箱配置
 - `POST /api/configs` - 创建新的邮箱配置（自动生成 API Key）
 - `GET /api/configs/{id}` - 获取指定配置详情
 - `PUT /api/configs/{id}` - 更新邮箱配置
 - `DELETE /api/configs/{id}` - 删除邮箱配置
 - `POST /api/configs/{id}/test` - 测试邮箱连通性
-
-#### 其他端点
 - `GET /api/providers` - 获取支持的邮箱提供商列表
-- `GET /.well-known/mcp/server-management.json` - Server Management Discovery
-- `GET /health` - 健康检查
+- `GET /api/health` - 健康检查
+
+### Web 界面
 - `GET /` - 重定向到配置界面
-
-### MCP 服务器 (http://127.0.0.1:8001)
-
-- `POST /mcp` - MCP 协议端点（需要 `X-API-Key` 请求头）
-- 支持 MCP 协议操作：`initialize`, `tools/list`, `tools/call`, `resources/list`, `resources/read`
+- `GET /config-ui/index.html` - 配置管理界面
+- `GET /.well-known/mcp/server-management.json` - Server Management Discovery
 
 ## 💾 数据库架构
 
@@ -218,7 +240,7 @@ CREATE TABLE email_configs (
 
 ## 🔧 高级选项
 
-### MCP 服务器命令行选项
+### 命令行选项
 
 ```bash
 # 自定义端口
@@ -232,14 +254,12 @@ export MCP_LOG_LEVEL=DEBUG
 ./start.sh
 ```
 
-### 配置 API 服务器选项
+### 独立运行配置 API（仅用于开发）
+
+如果需要独立运行配置 API（不推荐，仅用于开发调试）：
 
 ```bash
-# 使用 uvicorn 启动（支持热重载）
-uvicorn email_mcp.api_server:app --host 127.0.0.1 --port 8002 --reload
-
-# 自定义端口
-uvicorn email_mcp.api_server:app --port 9000
+python -m email_mcp.api_server
 ```
 
 ## 🔍 日志级别
@@ -268,7 +288,7 @@ uvicorn email_mcp.api_server:app --port 9000
 
 ## 🐛 故障排查
 
-### MCP 服务器无法启动
+### 服务器无法启动
 
 ```bash
 # 检查端口占用
@@ -279,21 +299,11 @@ export MCP_LOG_LEVEL=DEBUG
 ./start.sh
 ```
 
-### 配置 API 服务器无法启动
-
-```bash
-# 检查端口占用
-lsof -i :8002
-
-# 查看详细日志
-uvicorn email_mcp.api_server:app --log-level debug
-```
-
 ### 401 Unauthorized 错误
 
 - **原因**：缺少或无效的 `X-API-Key` 请求头
 - **解决**：确保 MCP 客户端配置中包含正确的 API 密钥
-- **获取密钥**：访问 http://127.0.0.1:8002/config-ui/index.html 查看或生成 API 密钥
+- **获取密钥**：访问 http://127.0.0.1:8001/config-ui/index.html 查看或生成 API 密钥
 
 ### 邮箱认证失败
 
@@ -312,7 +322,10 @@ curl -H "X-API-Key: your-api-key" http://localhost:8001/mcp
 lsof -i :8001
 
 # 测试配置 API
-curl http://localhost:8002/health
+curl http://localhost:8001/api/health
+
+# 测试配置界面
+curl http://localhost:8001/
 ```
 
 ### 数据库问题
@@ -376,13 +389,13 @@ ls -la data/email_mcp.db
 
 ```bash
 # 测试配置 API 健康状态
-curl http://localhost:8002/health
+curl http://localhost:8001/api/health
 
 # 获取支持的邮箱提供商列表
-curl http://localhost:8002/api/providers
+curl http://localhost:8001/api/providers
 
 # 创建新的邮箱配置
-curl -X POST http://localhost:8002/api/configs \
+curl -X POST http://localhost:8001/api/configs \
   -H "Content-Type: application/json" \
   -d '{
     "name": "我的工作邮箱",
@@ -392,7 +405,7 @@ curl -X POST http://localhost:8002/api/configs \
   }'
 
 # 测试邮箱连通性
-curl -X POST http://localhost:8002/api/configs/1/test \
+curl -X POST http://localhost:8001/api/configs/1/test \
   -H "Content-Type: application/json"
 
 # 使用 MCP 工具（需要 API Key）

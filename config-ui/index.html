@@ -548,7 +548,7 @@
         createApp({
             data() {
                 return {
-                    apiBaseUrl: window.location.protocol + '//' + window.location.hostname + ':8002',
+                    apiBaseUrl: window.location.origin,
                     copiedKey: null,
                     configs: [],
                     providers: [],
@@ -599,7 +599,7 @@
                 async loadConfigs() {
                     this.loading = true;
                     try {
-                        const response = await axios.get(`${this.apiBaseUrl}/api/config`);
+                        const response = await axios.get(`${this.apiBaseUrl}/api/configs`);
                         this.configs = response.data;
                     } catch (error) {
                         this.showMessage('加载配置失败: ' + (error.response?.data?.detail || error.message), 'error');
@@ -610,7 +610,7 @@
                 async addConfig() {
                     this.loading = true;
                     try {
-                        await axios.post(`${this.apiBaseUrl}/api/config`, this.newConfig);
+                        await axios.post(`${this.apiBaseUrl}/api/configs`, this.newConfig);
                         this.showMessage('配置添加成功! 已生成 API 密钥', 'success');
                         this.resetForm();
                         await this.loadConfigs();
@@ -624,7 +624,7 @@
                     this.testing = config.id;
                     try {
                         const response = await axios.post(
-                            `${this.apiBaseUrl}/api/config/${config.id}/test`,
+                            `${this.apiBaseUrl}/api/configs/${config.id}/test`,
                             {},
                             {
                                 headers: {
@@ -644,7 +644,7 @@
                 },
                 async activateConfig(config) {
                     try {
-                        await axios.put(`${this.apiBaseUrl}/api/config/${config.id}`,
+                        await axios.put(`${this.apiBaseUrl}/api/configs/${config.id}`,
                             { is_active: true },
                             {
                                 headers: {
@@ -660,7 +660,7 @@
                 },
                 async deactivateConfig(config) {
                     try {
-                        await axios.put(`${this.apiBaseUrl}/api/config/${config.id}`,
+                        await axios.put(`${this.apiBaseUrl}/api/configs/${config.id}`,
                             { is_active: false },
                             {
                                 headers: {
@@ -679,7 +679,7 @@
                         return;
                     }
                     try {
-                        await axios.delete(`${this.apiBaseUrl}/api/config/${config.id}`, {
+                        await axios.delete(`${this.apiBaseUrl}/api/configs/${config.id}`, {
                             headers: {
                                 'X-API-Key': config.api_key
                             }

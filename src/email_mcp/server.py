@@ -27,8 +27,6 @@ from fastmcp import FastMCP
 from fastmcp.server.middleware import Middleware
 from pydantic import BaseModel
 from starlette.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request as StarletteRequest
 
 from email_mcp.models import (
     EmailConfig,
@@ -53,40 +51,39 @@ class APIKeyMiddleware(Middleware):
 
     async def on_request(self, context, call_next):
         """Handle incoming requests - validate API key and set email config context."""
+        # Debug: Log context attributes
+        logger.debug(f"Context attributes: {dir(context)}")
+        logger.debug(f"Context method: {getattr(context, 'method', None)}")
+
         # Get API key from request metadata
         api_key = None
         if hasattr(context, 'request') and context.request:
+            logger.debug(f"Request headers: {dict(context.request.headers)}")
             api_key = context.request.headers.get('X-API-Key')
 
-        if not api_key:
-            logger.error("Request missing X-API-Key header")
-            # Return error response for MCP requests
-            if context.method in ["initialize", "tools/call", "tools/list", "resources/list", "resources/read"]:
-                return {
-                    "jsonrpc": "2.0",
-                    "id": getattr(context, 'request_id', None),
-                    "error": {
-                        "code": -32600,
-                        "message": "Unauthorized: X-API-Key header is required"
-                    }
-                }
+        # Allow initialize and tools/list methods without API key (for discovery)
+        # These methods don't access email configuration
+        method = getattr(context, 'method', None)
+        if method in ['initialize', 'tools/list', 'resources/list']:
+            logger.debug(f"Allowing {method} without API key")
             return await call_next(context)
+
+        if not api_key:
+            logger.error(f"Request missing X-API-Key header. Request headers: {dict(context.request.headers) if hasattr(context, 'request') and context.request else 'No request object'}")
+            raise ValueError(
+                "Unauthorized: X-API-Key header is required to call email tools. "
+                "Please obtain an API key from the configuration UI at http://127.0.0.1:8001/config-ui/index.html"
+            )
 
         logger.debug(f"Request with API key: {api_key[:8]}...")
         config = _get_email_config_from_db(api_key)
 
         if not config:
             logger.warning(f"Invalid API key: {api_key[:8]}...")
-            if context.method in ["initialize", "tools/call", "tools/list", "resources/list", "resources/read"]:
-                return {
-                    "jsonrpc": "2.0",
-                    "id": getattr(context, 'request_id', None),
-                    "error": {
-                        "code": -32600,
-                        "message": "Unauthorized: Invalid API key"
-                    }
-                }
-            return await call_next(context)
+            raise ValueError(
+                f"Unauthorized: Invalid API key. "
+                f"Please check your API key in the configuration UI."
+            )
 
         # Set email config context for this request
         token = _current_config.set(config)
@@ -102,45 +99,7 @@ api_key_middleware = APIKeyMiddleware()
 
 # Initialize MCP server with middleware (MCP protocol layer)
 mcp = FastMCP("email_mcp", middleware=[api_key_middleware])
-logger.info("✓ API Key middleware configured (API key required for all requests)")
-
-
-# HTTP-level middleware for API key validation (runs before MCP layer)
-class HTTPAPIKeyMiddleware(BaseHTTPMiddleware):
-    """HTTP middleware to validate API key at HTTP layer."""
-
-    async def dispatch(self, request: StarletteRequest, call_next):
-        """Validate API key from X-API-Key header."""
-        # Only check MCP endpoint
-        if not request.url.path.startswith('/mcp'):
-            return await call_next(request)
-
-        api_key = request.headers.get('X-API-Key')
-
-        if not api_key:
-            logger.error("Request missing X-API-Key header")
-            return JSONResponse(
-                status_code=401,
-                content={"error": "Unauthorized", "detail": "X-API-Key header is required"}
-            )
-
-        logger.debug(f"Request with API key: {api_key[:8]}...")
-        config = _get_email_config_from_db(api_key)
-
-        if not config:
-            logger.warning(f"Invalid API key: {api_key[:8]}...")
-            return JSONResponse(
-                status_code=401,
-                content={"error": "Unauthorized", "detail": "Invalid API key"}
-            )
-
-        # Set email config context for this request
-        token = _current_config.set(config)
-        try:
-            response = await call_next(request)
-        finally:
-            _current_config.reset(token)
-        return response
+logger.info("✓ API Key middleware configured (API key required for tool calls)")
 
 
 def _get_email_config_from_db(api_key: str) -> Optional[EmailConfig]:
@@ -462,12 +421,51 @@ if __name__ == "__main__":
     for handler in logger.handlers:
         handler.setLevel(log_level)
 
-    # Get the HTTP app instance and add middleware
+    # Get the HTTP app instance and mount additional apps
     # Note: http_app() returns a new instance each time, so we cache it
     if not hasattr(mcp, '_cached_http_app'):
         mcp._cached_http_app = mcp.http_app()
-        mcp._cached_http_app.add_middleware(HTTPAPIKeyMiddleware)
-        logger.info("✓ HTTP API Key middleware added to Starlette app")
+
+        # Import and mount FastAPI configuration app
+        from email_mcp.api_server import app as fastapi_app, mount_server_management_route
+        from starlette.routing import Mount
+        from email_mcp.database import init_database, get_session_factory
+
+        # Initialize database for configuration API
+        logger.info("✓ Initializing database...")
+        engine = init_database()
+        session_factory = get_session_factory(engine)
+
+        # Mount FastAPI app at /api path
+        # This allows all configuration API endpoints to be accessible under /api
+        mcp._cached_http_app.routes.append(
+            Mount("/api", app=fastapi_app, name="api")
+        )
+        logger.info("✓ Configuration API mounted at /api")
+
+        # Mount server-management discovery endpoint
+        mount_server_management_route(mcp._cached_http_app, f"http://{args.host}:{args.port}")
+        logger.info("✓ Server management discovery endpoint mounted")
+
+        # Mount static files for config UI at /config-ui path
+        import os
+        from starlette.staticfiles import StaticFiles
+        config_ui_path = os.path.join(os.path.dirname(__file__), "../../config-ui")
+        if os.path.exists(config_ui_path):
+            mcp._cached_http_app.routes.append(
+                Mount("/config-ui", app=StaticFiles(directory=config_ui_path), name="config-ui")
+            )
+            logger.info("✓ Configuration UI mounted at /config-ui")
+
+        # Add root redirect to config UI
+        from starlette.responses import RedirectResponse
+        from starlette.routing import Route
+
+        async def root_redirect(request):
+            return RedirectResponse(url="/config-ui/index.html")
+
+        # Insert root route at the beginning of routes list
+        mcp._cached_http_app.routes.insert(0, Route("/", root_redirect))
 
         # Patch http_app method to return cached instance
         original_http_app = mcp.http_app
@@ -477,11 +475,13 @@ if __name__ == "__main__":
 
     print()
     print("=" * 60)
-    print("  Email MCP Server - Streamable HTTP Mode")
+    print("  Email MCP Server - All-in-One Mode")
     print("=" * 60)
     print(f"  Host: {args.host}")
     print(f"  Port: {args.port}")
-    print(f"  Endpoint: http://{args.host}:{args.port}/mcp")
+    print(f"  MCP Endpoint: http://{args.host}:{args.port}/mcp")
+    print(f"  Config API:   http://{args.host}:{args.port}/api")
+    print(f"  Config UI:    http://{args.host}:{args.port}/config-ui/index.html")
     print(f"  Log Level: {logging.getLevelName(log_level)}")
     print("=" * 60)
     print()
