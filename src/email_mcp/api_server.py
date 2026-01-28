@@ -292,9 +292,9 @@ async def server_management_discovery():
             "version": "1.0.0"
         },
         "contact": {
-            "author": "Vibe Team",
-            "email": "dev@vibe-team.com",
-            "documentation": "https://docs.vibe-team.com/mcp/email"
+            "author": "chai lei",
+            "email": "anubiscl@163.com",
+            "documentation": "https://git.404.net.cn/vibe-team/email-mcp"
         },
         "managementEndpoints": [
             {
