@@ -28,12 +28,18 @@
       "Bash(sqlite3:*)",
       "Bash(curl:*)",
       "Bash(echo:*)",
-      "Bash(CONFIG_ID=1)"
+      "Bash(CONFIG_ID=1)",
+      "mcp__chrome-devtools-mcp__take_snapshot",
+      "Bash(__NEW_LINE:*)",
+      "Bash(xargs:*)"
     ]
   },
   "mcpServers": {
-    "email": {
-      "url": "http://localhost:8001/mcp"
+    "email-personal": {
+      "url": "http://127.0.0.1:8001/mcp",
+      "headers": {
+        "X-API-Key": "cVHOHxsA9RtsM40W698jXmz3PrWBfBTY1lDOP_2Eyhs"
+      }
     }
   }
 }

@@ -17,32 +17,70 @@ Configuration API:
 """
 
 import os
-import sys
 from contextlib import contextmanager
 from contextvars import ContextVar
-from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Optional
 
-from fastmcp import FastMCP
-from fastmcp.server.middleware import Middleware
-from pydantic import BaseModel
-from starlette.responses import JSONResponse
-
+from email_mcp.client import EmailClient
+from email_mcp.logging_config import get_logger, get_log_level_from_env
 from email_mcp.models import (
     EmailConfig,
     ListMessagesInput,
     SendMessageInput,
     ResponseFormat
 )
-from email_mcp.client import EmailClient
-from email_mcp.logging_config import get_logger, get_log_level_from_env
+from fastmcp import FastMCP
+from fastmcp.server.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 
 # Context variable for storing current request's email config
 _current_config: ContextVar[Optional[EmailConfig]] = ContextVar("current_config", default=None)
 
+# Context variable for storing current request's API key (set by HTTP middleware, read by MCP middleware)
+_current_api_key: ContextVar[Optional[str]] = ContextVar("current_api_key", default=None)
+
 
 # Initialize logger with log level from env
 logger = get_logger("server")
+
+
+# Starlette HTTP middleware for API key validation (HTTP layer)
+class HTTPAPIKeyMiddleware(BaseHTTPMiddleware):
+    """
+    Starlette middleware to extract X-API-Key header and store in app state.
+
+    This middleware runs at the HTTP layer and extracts the API key from the
+    request headers, storing it in the app.state for later access by the MCP
+    middleware layer.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        """Process request and extract API key."""
+        # Extract API key from headers
+        api_key = request.headers.get('X-API-Key')
+
+        # Get the path and method for logging
+        path = request.url.path
+        method = request.method
+
+        # Log the request with API key (truncated for security)
+        if api_key:
+            logger.debug(f"{method} {path} - API-Key: {api_key[:8]}...")
+        else:
+            logger.debug(f"{method} {path} - No API-Key")
+
+        # Store API key in context variable for MCP middleware
+        token = _current_api_key.set(api_key)
+
+        try:
+            # Continue processing
+            response = await call_next(request)
+        finally:
+            # Clean up context
+            _current_api_key.reset(token)
+
+        return response
 
 
 # API Key middleware to extract X-API-Key header and set email config context
@@ -51,15 +89,8 @@ class APIKeyMiddleware(Middleware):
 
     async def on_request(self, context, call_next):
         """Handle incoming requests - validate API key and set email config context."""
-        # Debug: Log context attributes
-        logger.debug(f"Context attributes: {dir(context)}")
-        logger.debug(f"Context method: {getattr(context, 'method', None)}")
-
-        # Get API key from request metadata
-        api_key = None
-        if hasattr(context, 'request') and context.request:
-            logger.debug(f"Request headers: {dict(context.request.headers)}")
-            api_key = context.request.headers.get('X-API-Key')
+        # Get API key from context variable (set by HTTP middleware)
+        api_key = _current_api_key.get()
 
         # Allow initialize and tools/list methods without API key (for discovery)
         # These methods don't access email configuration
@@ -69,7 +100,7 @@ class APIKeyMiddleware(Middleware):
             return await call_next(context)
 
         if not api_key:
-            logger.error(f"Request missing X-API-Key header. Request headers: {dict(context.request.headers) if hasattr(context, 'request') and context.request else 'No request object'}")
+            logger.error(f"Request missing X-API-Key header")
             raise ValueError(
                 "Unauthorized: X-API-Key header is required to call email tools. "
                 "Please obtain an API key from the configuration UI at http://127.0.0.1:8001/config-ui/index.html"
@@ -260,7 +291,12 @@ def _format_messages_json(messages: list, total_count: int = 0) -> str:
         "openWorldHint": True
     }
 )
-def email_list_messages(params: dict | str | ListMessagesInput) -> str:
+def email_list_messages(
+    count: int = 10,
+    message_type: str = "ALL",
+    latest_first: bool = True,
+    response_format: str = "markdown"
+) -> str:
     """
     List email messages from INBOX with optional filtering.
 
@@ -269,25 +305,21 @@ def email_list_messages(params: dict | str | ListMessagesInput) -> str:
     control. The tool does NOT modify any emails - it only reads and lists them.
 
     Args:
-        params: Validated input parameters containing:
-            - count (int): Number of emails to retrieve, 1-100 (default: 10)
-            - message_type (EmailMessageType): Filter by ALL/UNSEEN/SEEN/RECENT/ANSWERED/FLAGGED
-            - latest_first (bool): Retrieve newest first (True) or oldest first (False)
-            - response_format (ResponseFormat): 'markdown' or 'json' output
+        count: Number of emails to retrieve, 1-100 (default: 10)
+        message_type: Filter by ALL/UNSEEN/SEEN/RECENT/ANSWERED/FLAGGED (default: ALL)
+        latest_first: Retrieve newest first (True) or oldest first (False) (default: True)
+        response_format: Output format - 'markdown' or 'json' (default: markdown)
 
     Returns:
         str: Formatted response containing email messages
     """
-    import json
-
-    # Handle both string and dict inputs
-    if isinstance(params, str):
-        logger.debug("Parsing arguments from JSON string")
-        params_dict = json.loads(params)
-    elif isinstance(params, dict):
-        params_dict = params
-    else:
-        params_dict = params.model_dump()
+    # Create params dict and validate with Pydantic model
+    params_dict = {
+        "count": count,
+        "message_type": message_type,
+        "latest_first": latest_first,
+        "response_format": response_format
+    }
 
     # Validate with Pydantic model
     validated_params = ListMessagesInput(**params_dict)
@@ -329,7 +361,13 @@ def email_list_messages(params: dict | str | ListMessagesInput) -> str:
         "openWorldHint": True
     }
 )
-def email_send_message(params: dict | str | SendMessageInput) -> str:
+def email_send_message(
+    to: str,
+    subject: str,
+    content: str,
+    content_type: str = "plain",
+    attachments: list = []
+) -> str:
     """
     Send an email message to specified recipients.
 
@@ -337,26 +375,23 @@ def email_send_message(params: dict | str | SendMessageInput) -> str:
     and HTML content, and can attach multiple files.
 
     Args:
-        params: Validated input parameters containing:
-            - to (str): Recipient email address
-            - subject (str): Email subject line
-            - content (str): Email body content
-            - content_type (ContentType): 'plain' or 'html' (default: 'plain')
-            - attachments (List[str]): List of file paths to attach (max 10)
+        to: Recipient email address
+        subject: Email subject line
+        content: Email body content
+        content_type: Content type - 'plain' or 'html' (default: 'plain')
+        attachments: List of file paths to attach (default: [])
 
     Returns:
         str: Success confirmation or error message
     """
-    import json
-
-    # Handle both string and dict inputs
-    if isinstance(params, str):
-        logger.debug("Parsing arguments from JSON string")
-        params_dict = json.loads(params)
-    elif isinstance(params, dict):
-        params_dict = params
-    else:
-        params_dict = params.model_dump()
+    # Create params dict and validate with Pydantic model
+    params_dict = {
+        "to": to,
+        "subject": subject,
+        "content": content,
+        "content_type": content_type,
+        "attachments": attachments
+    }
 
     # Validate with Pydantic model
     validated_params = SendMessageInput(**params_dict)
@@ -425,6 +460,10 @@ if __name__ == "__main__":
     # Note: http_app() returns a new instance each time, so we cache it
     if not hasattr(mcp, '_cached_http_app'):
         mcp._cached_http_app = mcp.http_app()
+
+        # Add HTTP middleware for API key extraction (HTTP layer)
+        mcp._cached_http_app.add_middleware(HTTPAPIKeyMiddleware)
+        logger.info("✓ HTTP API Key middleware added")
 
         # Import and mount FastAPI configuration app
         from email_mcp.api_server import app as fastapi_app, mount_server_management_route

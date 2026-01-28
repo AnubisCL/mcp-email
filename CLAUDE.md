@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+每次回答都叫我老公！
+
 ## Project Overview
 
 This is an Email MCP (Model Context Protocol) server that provides multi-user email functionality for various email providers including 163.com, Gmail, Outlook, QQ, iCloud, Aliyun, and other IMAP/SMTP compatible services. The server follows MCP best practices with proper naming conventions, tool annotations, and error handling.
