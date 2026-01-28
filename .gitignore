@@ -77,3 +77,9 @@ dmypy.json
 # Attachments (local storage)
 attachments/
 email-attachments/
+
+# Database (SQLite)
+data/
+*.db
+*.sqlite
+*.sqlite3

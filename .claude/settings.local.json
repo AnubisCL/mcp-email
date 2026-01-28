@@ -28,11 +28,7 @@
       "Bash(sqlite3:*)",
       "Bash(curl:*)",
       "Bash(echo:*)",
-      "Bash(CONFIG_ID=1)",
-      "Bash(API_KEY=\"_eGdsHswyFw3oQglIUG_Y0fx_HTclXbuFwZJenLxmjA\")",
-      "Bash(__NEW_LINE_86bf12e3656d7a04__ echo \"=== 2. 测试MCP服务器 \\(带有效API Key\\) ===\")",
-      "Bash(__NEW_LINE_f027f625c50ce3e1__ echo -e \"\\\\n\\\\n=== 3. 测试MCP服务器 \\(不带API Key\\) ===\")",
-      "Bash(__NEW_LINE_566df5b9914be37e__ echo -e \"\\\\n\\\\n=== 4. 测试MCP服务器 \\(无效API Key\\) ===\")"
+      "Bash(CONFIG_ID=1)"
     ]
   },
   "mcpServers": {
